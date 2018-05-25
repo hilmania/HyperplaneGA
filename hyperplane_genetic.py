@@ -1,11 +1,14 @@
+# Created by : Hilman Ibnu Assiddiq
+
 import matplotlib.pyplot as plt
 import numpy as np
+import math
 
-N_CITIES = 20  # DNA size
-CROSS_RATE = 0.1
-MUTATE_RATE = 0.02
+N_MARGIN = 3
+CROSS_RATE = 0.7
+MUTATE_RATE = 0.3
 POP_SIZE = 500
-N_GENERATIONS = 500
+N_GENERATIONS = 1000
 
 class GA(object):
     def __init__(self, DNA_size, cross_rate, mutation_rate, pop_size, ):
@@ -14,23 +17,32 @@ class GA(object):
         self.mutate_rate = mutation_rate
         self.pop_size = pop_size
 
+        self.data = np.random.rand(3,3)
+
         self.pop = np.vstack([np.random.permutation(DNA_size) for _ in range(pop_size)])
 
-    def translateDNA(self, DNA, city_position):     # get cities' coord in order
-        line_x = np.empty_like(DNA, dtype=np.float64)
-        line_y = np.empty_like(DNA, dtype=np.float64)
-        for i, d in enumerate(DNA):
-            city_coord = city_position[d]
-            line_x[i, :] = city_coord[:, 0]
-            line_y[i, :] = city_coord[:, 1]
-        return line_x, line_y
+    def translateDNA(self, DNA, data):
+        w1 = np.empty_like(DNA, dtype=np.float64)
+        w2 = np.empty_like(DNA, dtype=np.float64)
+        b = np.empty_like(DNA, dtype=np.float64)
 
-    def get_fitness(self, line_x, line_y):
-        total_distance = np.empty((line_x.shape[0],), dtype=np.float64)
-        for i, (xs, ys) in enumerate(zip(line_x, line_y)):
-            total_distance[i] = np.sum(np.sqrt(np.square(np.diff(xs)) + np.square(np.diff(ys))))
-        fitness = np.exp(self.DNA_size * 2 / total_distance)
-        return fitness, total_distance
+        for i, d in enumerate(DNA):
+            point = data[d]
+            w1[i] = point[i, 0]
+            w2[i] = point[i, 1]
+            b[i] = point[i, 2] 
+        return w1, w2, b
+
+    def count_fitness(self, w1, w2, b, x, y, x1, y1):
+        fitness = np.empty((x.shape[0]+x1.shape[0],), dtype=np.float64)
+
+        for i in range(0, x.shape[0]):
+            fitness[i] = (w1[i]*x[i] + w2[i]*y[i] + b[i]) / math.sqrt(w1[i]**2 + w2[i]**2)
+    
+        for j in range(0, x1.shape[0]):
+            fitness[j+x.shape[0]] = abs((w1[j]*x1[j] + w2[j]*y1[j] + b[j]) * -1) / math.sqrt(w1[j]**2 + w2[j]**2)
+    
+        return np.amin(fitness)
 
     def select(self, fitness):
         idx = np.random.choice(np.arange(self.pop_size), size=self.pop_size, replace=True, p=fitness / fitness.sum())
@@ -38,11 +50,11 @@ class GA(object):
 
     def crossover(self, parent, pop):
         if np.random.rand() < self.cross_rate:
-            i_ = np.random.randint(0, self.pop_size, size=1)                        # select another individual from pop
-            cross_points = np.random.randint(0, 2, self.DNA_size).astype(np.bool)   # choose crossover points
-            keep_city = parent[~cross_points]                                       # find the city number
-            swap_city = pop[i_, np.isin(pop[i_].ravel(), keep_city, invert=True)]
-            parent[:] = np.concatenate((keep_city, swap_city))
+            i_ = np.random.randint(0, self.pop_size, size=1)                       
+            cross_points = np.random.randint(0, 2, self.DNA_size).astype(np.bool)   
+            keep_point = parent[~cross_points]                                       
+            swap_point = pop[i_, np.isin(pop[i_].ravel(), keep_point, invert=True)]
+            parent[:] = np.concatenate((keep_point, swap_point))
         return parent
 
     def mutate(self, child):
@@ -56,39 +68,20 @@ class GA(object):
     def evolve(self, fitness):
         pop = self.select(fitness)
         pop_copy = pop.copy()
-        for parent in pop:  # for every parent
+        for parent in pop: 
             child = self.crossover(parent, pop_copy)
             child = self.mutate(child)
             parent[:] = child
         self.pop = pop
 
+if __name__ == '__main__':
+    x, y = np.loadtxt('dataA.txt', delimiter=',', unpack=True)
+    x1, y1 = np.loadtxt('dataB.txt', delimiter=',', unpack=True)    
 
-class TravelSalesPerson(object):
-    def __init__(self, n_cities):
-        self.city_position = np.random.rand(n_cities, 2)
-        plt.ion()
-
-    def plotting(self, lx, ly, total_d):
-        plt.cla()
-        plt.scatter(self.city_position[:, 0].T, self.city_position[:, 1].T, s=100, c='k')
-        plt.plot(lx.T, ly.T, 'r-')
-        plt.text(-0.05, -0.05, "Total distance=%.2f" % total_d, fontdict={'size': 20, 'color': 'red'})
-        plt.xlim((-0.1, 1.1))
-        plt.ylim((-0.1, 1.1))
-        plt.pause(0.01)
-
-
-ga = GA(DNA_size=N_CITIES, cross_rate=CROSS_RATE, mutation_rate=MUTATE_RATE, pop_size=POP_SIZE)
-
-env = TravelSalesPerson(N_CITIES)
-for generation in range(N_GENERATIONS):
-    lx, ly = ga.translateDNA(ga.pop, env.city_position)
-    fitness, total_distance = ga.get_fitness(lx, ly)
-    ga.evolve(fitness)
-    best_idx = np.argmax(fitness)
-    print('Gen:', generation, '| best fit: %.2f' % fitness[best_idx],)
-
-    env.plotting(lx[best_idx], ly[best_idx], total_distance[best_idx])
-
-plt.ioff()
-plt.show()
+    ga = GA(DNA_size=N_MARGIN, cross_rate=CROSS_RATE, mutation_rate=MUTATE_RATE, pop_size=POP_SIZE)
+    for generation in range(N_GENERATIONS):
+        w1, w2, b = ga.translateDNA(ga.pop, ga.data)
+        fitness = ga.count_fitness(w1, w2, b, x, y, x1, y1)
+        ga.evolve(fitness)
+        best_idx = np.argmax(fitness)
+        print('Gen:', generation, '| best fit: %.2f' % fitness[best_idx],)
